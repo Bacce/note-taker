@@ -6,8 +6,10 @@ import { NoteList } from './components/NoteList'
 import { NoteView } from './components/NoteView'
 import { FontSizeControl } from './components/FontSizeControl'
 import { Landing } from './components/Landing'
+import { PinLock } from './components/PinLock'
 
 function App() {
+  const [unlocked, setUnlocked] = useState(false)
   const { notes, createNote, updateNote, deleteNote } = useNotes()
   const { fontSize, increase, decrease, canIncrease, canDecrease } = useFontSize()
   const { recentIds, visit } = useRecentNotes()
@@ -35,6 +37,10 @@ function App() {
     setSelectedId(id)
     visit(id)
     setSidebarOpen(false)
+  }
+
+  if (!unlocked) {
+    return <PinLock onUnlock={() => setUnlocked(true)} />
   }
 
   return (
