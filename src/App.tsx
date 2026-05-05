@@ -95,6 +95,7 @@ function App() {
         <main className="flex-1 min-w-0">
           {activeNote ? (
             <NoteView
+              key={activeNote.id}
               note={activeNote}
               fontSize={fontSize}
               onUpdate={updateNote}

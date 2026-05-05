@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from 'react'
+import { useState, useRef } from 'react'
 import type { Note } from '../types'
 
 interface NoteViewProps {
@@ -14,12 +14,6 @@ export function NoteView({ note, fontSize, onUpdate, onDelete, onClose }: NoteVi
   const [title, setTitle] = useState(note.title)
   const [content, setContent] = useState(note.content)
   const contentRef = useRef<HTMLTextAreaElement>(null)
-
-  useEffect(() => {
-    setTitle(note.title)
-    setContent(note.content)
-    setEditing(false)
-  }, [note.id])
 
   function save() {
     onUpdate(note.id, { title: title.trim() || 'Untitled', content })
@@ -53,7 +47,17 @@ export function NoteView({ note, fontSize, onUpdate, onDelete, onClose }: NoteVi
         {editing ? (
           <>
             <button
-              onClick={() => setContent(content.replace(/\n/g, ' ').replace(/\.\s*/g, '.\n'))}
+              onClick={() => {
+                const firstLine = content.split('\n').find(l => l.trim())?.trim()
+                if (firstLine) setTitle(firstLine)
+              }}
+              className="px-3 py-1.5 rounded-md text-sm text-slate-300 hover:bg-slate-800 transition-colors cursor-pointer"
+              title="Use first line of content as title"
+            >
+              Title from text
+            </button>
+            <button
+              onClick={() => setContent(content.replace(/\n{2,}/g, '\n').replace(/\n/g, ' ').replace(/\.(?!\.)\s*/g, '.\n'))}
               className="px-3 py-1.5 rounded-md text-sm text-slate-300 hover:bg-slate-800 transition-colors cursor-pointer"
               title="Remove newlines and break after each sentence"
             >
