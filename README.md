@@ -1,73 +1,87 @@
-# React + TypeScript + Vite
+# Notes
 
-This template provides a minimal setup to get React working in Vite with HMR and some ESLint rules.
+A minimal, offline-capable PWA note-taking app vibe-coded with React, TypeScript, and Vite.
 
-Currently, two official plugins are available:
+## Features
 
-- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react) uses [Oxc](https://oxc.rs)
-- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react-swc) uses [SWC](https://swc.rs/)
+- **Read / Edit modes** -- notes open in read mode by default; switch to edit mode to make changes.
+- **PIN lock** -- a simple 4-digit PIN screen on launch to keep notes private.
+- **Font size control** -- adjustable between 12px and 28px, preference persisted across sessions.
+- **Reflow tool** -- collapses extra newlines and breaks text into one sentence per line.
+- **Title from text** -- pulls the first line of content into the title field with one click.
+- **Recently visited** -- the landing page shows the last 5 notes you opened.
+- **Offline support** -- service worker precaches all assets; works without an internet connection.
+- **Installable** -- can be added to home screen on mobile or installed as a desktop app.
+- **IndexedDB storage** -- notes are stored in the browser's IndexedDB for reliable persistence.
+- **Responsive** -- sidebar collapses into a slide-out drawer on small screens.
 
-## React Compiler
+## Tech Stack
 
-The React Compiler is not enabled on this template because of its impact on dev & build performances. To add it, see [this documentation](https://react.dev/learn/react-compiler/installation).
+| Layer       | Technology                      |
+|-------------|---------------------------------|
+| Framework   | React 19                        |
+| Language    | TypeScript 6                    |
+| Build       | Vite 8                          |
+| Styling     | Tailwind CSS 4 (via Vite plugin)|
+| Storage     | IndexedDB (via `idb`)           |
+| PWA         | vite-plugin-pwa (Workbox)       |
 
-## Expanding the ESLint configuration
+## Getting Started
 
-If you are developing a production application, we recommend updating the configuration to enable type-aware lint rules:
+### Prerequisites
 
-```js
-export default defineConfig([
-  globalIgnores(['dist']),
-  {
-    files: ['**/*.{ts,tsx}'],
-    extends: [
-      // Other configs...
+- Node.js 20+
+- Yarn (a `yarn.lock` is included)
 
-      // Remove tseslint.configs.recommended and replace with this
-      tseslint.configs.recommendedTypeChecked,
-      // Alternatively, use this for stricter rules
-      tseslint.configs.strictTypeChecked,
-      // Optionally, add this for stylistic rules
-      tseslint.configs.stylisticTypeChecked,
+### Install and Run
 
-      // Other configs...
-    ],
-    languageOptions: {
-      parserOptions: {
-        project: ['./tsconfig.node.json', './tsconfig.app.json'],
-        tsconfigRootDir: import.meta.dirname,
-      },
-      // other options...
-    },
-  },
-])
+```bash
+cd reader
+yarn install
+yarn dev
 ```
 
-You can also install [eslint-plugin-react-x](https://github.com/Rel1cx/eslint-react/tree/main/packages/plugins/eslint-plugin-react-x) and [eslint-plugin-react-dom](https://github.com/Rel1cx/eslint-react/tree/main/packages/plugins/eslint-plugin-react-dom) for React-specific lint rules:
+The dev server starts at `http://localhost:5173`.
 
-```js
-// eslint.config.js
-import reactX from 'eslint-plugin-react-x'
-import reactDom from 'eslint-plugin-react-dom'
+### Build for Production
 
-export default defineConfig([
-  globalIgnores(['dist']),
-  {
-    files: ['**/*.{ts,tsx}'],
-    extends: [
-      // Other configs...
-      // Enable lint rules for React
-      reactX.configs['recommended-typescript'],
-      // Enable lint rules for React DOM
-      reactDom.configs.recommended,
-    ],
-    languageOptions: {
-      parserOptions: {
-        project: ['./tsconfig.node.json', './tsconfig.app.json'],
-        tsconfigRootDir: import.meta.dirname,
-      },
-      // other options...
-    },
-  },
-])
+```bash
+yarn build
+yarn preview
 ```
+
+The production build outputs to `dist/` with a service worker for offline use.
+
+## Project Structure
+
+```
+src/
+├── main.tsx                   # App entry point
+├── App.tsx                    # Root component: PIN gate, layout, routing
+├── index.css                  # Tailwind CSS import
+├── types.ts                   # Note interface
+├── db.ts                      # IndexedDB wrapper (idb)
+├── components/
+│   ├── PinLock.tsx            # PIN entry screen
+│   ├── Landing.tsx            # Welcome page with recent notes
+│   ├── NoteList.tsx           # Sidebar note list
+│   ├── NoteView.tsx           # Read/edit view with toolbar actions
+│   └── FontSizeControl.tsx    # A-/A+ font size buttons
+└── hooks/
+    ├── useNotes.ts            # CRUD operations backed by IndexedDB
+    ├── useRecentNotes.ts      # Last 5 visited notes (localStorage)
+    └── useFontSize.ts         # Font size preference (localStorage)
+```
+
+## Available Scripts
+
+| Command        | Description                          |
+|----------------|--------------------------------------|
+| `yarn dev`     | Start development server             |
+| `yarn build`   | Type-check and build for production  |
+| `yarn preview` | Preview the production build locally |
+| `yarn lint`    | Run ESLint                           |
+
+## Notes on Security
+
+The PIN lock is a basic UI-level screen lock with a hardcoded PIN. It is **not** a security feature -- all data is stored unencrypted in the browser's IndexedDB and can be accessed through dev tools. Do not rely on it to protect sensitive information.
