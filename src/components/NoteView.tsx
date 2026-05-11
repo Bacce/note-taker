@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect } from 'react'
+import { useState, useRef, useEffect, useCallback } from 'react'
 import type { Note } from '../types'
 
 interface NoteViewProps {
@@ -10,17 +10,71 @@ interface NoteViewProps {
   onClose: () => void
 }
 
+function scrollKey(id: string) {
+  return `note-scroll-${id}`
+}
+
 export function NoteView({ note, fontSize, initialEditing = false, onUpdate, onDelete, onClose }: NoteViewProps) {
   const [editing, setEditing] = useState(initialEditing)
   const [title, setTitle] = useState(note.title)
   const [content, setContent] = useState(note.content)
+  const [readProgress, setReadProgress] = useState(0)
   const contentRef = useRef<HTMLTextAreaElement>(null)
+  const scrollRef = useRef<HTMLDivElement>(null)
+  const saveScrollTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
 
+  // Restore saved scroll position once the scroll container is mounted
+  useEffect(() => {
+    const el = scrollRef.current
+    if (!el) return
+    const saved = localStorage.getItem(scrollKey(note.id))
+    if (saved !== null) {
+      el.scrollTop = Number(saved)
+    }
+  }, [note.id])
+
+  // Focus textarea when entering edit mode initially
   useEffect(() => {
     if (initialEditing) {
       requestAnimationFrame(() => contentRef.current?.focus())
     }
   }, [])
+
+  const updateProgress = useCallback(() => {
+    const el = scrollRef.current
+    if (!el) return
+    const { scrollTop, scrollHeight, clientHeight } = el
+    const scrollable = scrollHeight - clientHeight
+    const pct = scrollable > 0 ? Math.round((scrollTop / scrollable) * 100) : 100
+    setReadProgress(pct)
+  }, [])
+
+  const handleScroll = useCallback(() => {
+    updateProgress()
+
+    // Debounced persist
+    if (saveScrollTimer.current) clearTimeout(saveScrollTimer.current)
+    saveScrollTimer.current = setTimeout(() => {
+      const el = scrollRef.current
+      if (el) localStorage.setItem(scrollKey(note.id), String(el.scrollTop))
+    }, 200)
+  }, [note.id, updateProgress])
+
+  // Compute initial progress once layout settles
+  useEffect(() => {
+    // rAF ensures the browser has painted and scrollHeight is accurate
+    const id = requestAnimationFrame(updateProgress)
+    return () => cancelAnimationFrame(id)
+  }, [note.id, updateProgress])
+
+  // Save position on unmount (handles close without scrolling)
+  useEffect(() => {
+    return () => {
+      if (saveScrollTimer.current) clearTimeout(saveScrollTimer.current)
+      const el = scrollRef.current
+      if (el) localStorage.setItem(scrollKey(note.id), String(el.scrollTop))
+    }
+  }, [note.id])
 
   function save() {
     onUpdate(note.id, { title: title.trim() || 'Untitled', content })
@@ -64,7 +118,7 @@ export function NoteView({ note, fontSize, initialEditing = false, onUpdate, onD
               Title from text
             </button>
             <button
-              onClick={() => setContent(content.replace(/\n{2,}/g, '\n').replace(/\n/g, ' ').replace(/\.(?!\.)\s*/g, '.\n'))}
+              onClick={() => setContent(content.replace(/\n{2,}/g, '\n').replace(/\n/g, ' ').replace(/\.(?!\.)\ */g, '.\n'))}
               className="px-3 py-1.5 rounded-md text-sm text-slate-300 hover:bg-slate-800 transition-colors cursor-pointer"
               title="Remove newlines and break after each sentence"
             >
@@ -85,6 +139,16 @@ export function NoteView({ note, fontSize, initialEditing = false, onUpdate, onD
           </>
         ) : (
           <>
+            {/* Reading progress badge */}
+            <div
+              className="flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-slate-800 text-slate-400 text-xs font-medium tabular-nums select-none"
+              title="Reading progress"
+            >
+              <svg className="w-3 h-3 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 6.253v13m0-13C10.832 5.477 9.246 5 7.5 5S4.168 5.477 3 6.253v13C4.168 18.477 5.754 18 7.5 18s3.332.477 4.5 1.253m0-13C13.168 5.477 14.754 5 16.5 5c1.747 0 3.332.477 4.5 1.253v13C19.832 18.477 18.247 18 16.5 18c-1.746 0-3.332.477-4.5 1.253" />
+              </svg>
+              <span>{readProgress}%</span>
+            </div>
             <button
               onClick={enterEdit}
               className="px-3 py-1.5 rounded-md text-sm text-slate-300 hover:bg-slate-800 transition-colors cursor-pointer"
@@ -102,7 +166,7 @@ export function NoteView({ note, fontSize, initialEditing = false, onUpdate, onD
       </div>
 
       {/* Content */}
-      <div className="flex-1 overflow-y-auto p-6">
+      <div ref={scrollRef} onScroll={handleScroll} className="flex-1 overflow-y-auto p-6">
         {editing ? (
           <div className="flex flex-col gap-4 max-w-3xl">
             <input
