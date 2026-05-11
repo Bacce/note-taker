@@ -32,8 +32,8 @@ export function PinLock({ onUnlock }: PinLockProps) {
   }
 
   return (
-    <div className="h-dvh flex items-center justify-center bg-slate-950">
-      <div className="flex flex-col items-center gap-8">
+    <div className="h-dvh flex items-center justify-center bg-slate-950 w-full">
+      <div className="flex flex-col items-center gap-8 w-full">
         <div>
           <h1 className="text-2xl font-semibold text-slate-100 text-center mb-2">Enter PIN</h1>
           <p className={`text-sm text-center h-5 ${error ? 'text-red-400' : 'text-transparent'}`}>
@@ -54,7 +54,7 @@ export function PinLock({ onUnlock }: PinLockProps) {
           ))}
         </div>
 
-        <div className="grid grid-cols-3 gap-3">
+        <div className="grid grid-cols-3 gap-4 w-[80%] max-w-md">
           {['1','2','3','4','5','6','7','8','9','','0','⌫'].map((key) => (
             <button
               key={key || 'empty'}
@@ -63,7 +63,7 @@ export function PinLock({ onUnlock }: PinLockProps) {
                 else if (key) handleDigit(key)
               }}
               disabled={!key}
-              className={`w-16 h-16 rounded-full text-xl font-medium transition-colors ${
+              className={`w-full aspect-square rounded-full text-3xl font-medium transition-colors flex items-center justify-center ${
                 key
                   ? 'text-slate-100 hover:bg-slate-800 active:bg-slate-700 cursor-pointer'
                   : 'cursor-default'
