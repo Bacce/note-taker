@@ -15,6 +15,7 @@ function App() {
   const { recentIds, visit } = useRecentNotes()
   const [selectedId, setSelectedId] = useState<string | null>(null)
   const [sidebarOpen, setSidebarOpen] = useState(false)
+  const [newNoteId, setNewNoteId] = useState<string | null>(null)
 
   const activeNote = selectedId ? (notes.find(n => n.id === selectedId) ?? null) : null
   const recentNotes = recentIds
@@ -24,6 +25,7 @@ function App() {
   function handleCreate() {
     const note = createNote()
     setSelectedId(note.id)
+    setNewNoteId(note.id)
     visit(note.id)
     setSidebarOpen(false)
   }
@@ -35,6 +37,7 @@ function App() {
 
   function handleSelect(id: string) {
     setSelectedId(id)
+    setNewNoteId(null)
     visit(id)
     setSidebarOpen(false)
   }
@@ -104,6 +107,7 @@ function App() {
               key={activeNote.id}
               note={activeNote}
               fontSize={fontSize}
+              initialEditing={activeNote.id === newNoteId}
               onUpdate={updateNote}
               onDelete={handleDelete}
               onClose={() => setSelectedId(null)}

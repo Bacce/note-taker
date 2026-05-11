@@ -1,19 +1,26 @@
-import { useState, useRef } from 'react'
+import { useState, useRef, useEffect } from 'react'
 import type { Note } from '../types'
 
 interface NoteViewProps {
   note: Note
   fontSize: number
+  initialEditing?: boolean
   onUpdate: (id: string, updates: Partial<Pick<Note, 'title' | 'content'>>) => void
   onDelete: (id: string) => void
   onClose: () => void
 }
 
-export function NoteView({ note, fontSize, onUpdate, onDelete, onClose }: NoteViewProps) {
-  const [editing, setEditing] = useState(false)
+export function NoteView({ note, fontSize, initialEditing = false, onUpdate, onDelete, onClose }: NoteViewProps) {
+  const [editing, setEditing] = useState(initialEditing)
   const [title, setTitle] = useState(note.title)
   const [content, setContent] = useState(note.content)
   const contentRef = useRef<HTMLTextAreaElement>(null)
+
+  useEffect(() => {
+    if (initialEditing) {
+      requestAnimationFrame(() => contentRef.current?.focus())
+    }
+  }, [])
 
   function save() {
     onUpdate(note.id, { title: title.trim() || 'Untitled', content })
