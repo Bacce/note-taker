@@ -193,7 +193,17 @@ export function NoteView({ note, fontSize, initialEditing = false, onUpdate, onD
               Title from text
             </button>
             <button
-              onClick={() => setContent(content.replace(/\n{2,}/g, '\n').replace(/\n/g, ' ').replace(/\.(?!\.)\ */g, '.\n'))}
+              onClick={() => setContent(
+                content
+                  .replace(/\r?\n/g, ' ')                // flatten all newlines → spaces
+                  .replace(/[ \t]+/g, ' ')               // collapse multiple spaces/tabs to one
+                  .replace(/([?!])\s*/g, '$1\n')         // break after ? and !
+                  .replace(/(?<!\.)\.(?!\.)\s*/g, '.\n') // break after . but not inside ...
+                  .split('\n')
+                  .map(s => s.trim())                    // strip any leading spaces per line
+                  .filter(s => s.length > 0)             // drop blank lines
+                  .join('\n')
+              )}
               className="px-3 py-1.5 rounded-md text-sm text-slate-300 hover:bg-slate-800 transition-colors cursor-pointer"
               title="Remove newlines and break after each sentence"
             >
