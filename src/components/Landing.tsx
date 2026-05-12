@@ -34,8 +34,13 @@ export function Landing({ recentNotes, onSelect, onCreate }: LandingProps) {
                     onClick={() => onSelect(note.id)}
                     className="w-full text-left px-4 py-3 rounded-lg hover:bg-slate-800 transition-colors cursor-pointer group"
                   >
-                    <p className="text-sm font-medium text-slate-200 group-hover:text-white truncate">
-                      {note.title || 'Untitled'}
+                    <p className="text-sm font-medium text-slate-200 group-hover:text-white truncate flex items-center gap-1.5">
+                      {note.read && (
+                        <svg className="w-3.5 h-3.5 text-emerald-400 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M5 13l4 4L19 7" />
+                        </svg>
+                      )}
+                      <span className="truncate">{note.title || 'Untitled'}</span>
                     </p>
                     <p className="text-xs text-slate-500 mt-0.5">{formatDate(note.updatedAt)}</p>
                   </button>

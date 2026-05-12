@@ -19,6 +19,7 @@ export function useNotes() {
       id: crypto.randomUUID(),
       title: 'Untitled',
       content: '',
+      read: false,
       createdAt: now,
       updatedAt: now,
     }
@@ -27,7 +28,7 @@ export function useNotes() {
     return note
   }, [])
 
-  const updateNote = useCallback((id: string, updates: Partial<Pick<Note, 'title' | 'content'>>) => {
+  const updateNote = useCallback((id: string, updates: Partial<Pick<Note, 'title' | 'content' | 'read'>>) => {
     setNotes(prev => {
       const next = prev.map(n => {
         if (n.id !== id) return n

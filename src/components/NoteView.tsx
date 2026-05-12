@@ -79,7 +79,7 @@ interface NoteViewProps {
   note: Note
   fontSize: number
   initialEditing?: boolean
-  onUpdate: (id: string, updates: Partial<Pick<Note, 'title' | 'content'>>) => void
+  onUpdate: (id: string, updates: Partial<Pick<Note, 'title' | 'content' | 'read'>>) => void
   onDelete: (id: string) => void
   onClose: () => void
 }
@@ -252,6 +252,20 @@ export function NoteView({ note, fontSize, initialEditing = false, onUpdate, onD
                 )}
               </svg>
               {censorMode ? 'Censored' : 'Censor'}
+            </button>
+            <button
+              onClick={() => onUpdate(note.id, { read: !note.read })}
+              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-md text-sm font-medium transition-colors cursor-pointer ${
+                note.read
+                  ? 'bg-emerald-900/30 text-emerald-400'
+                  : 'text-slate-400 hover:bg-slate-800 hover:text-slate-200'
+              }`}
+              title={note.read ? 'Mark as unread' : 'Mark as read'}
+            >
+              <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M5 13l4 4L19 7" />
+              </svg>
+              {note.read ? 'Read' : 'Mark read'}
             </button>
             <button
               onClick={enterEdit}
