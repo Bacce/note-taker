@@ -187,7 +187,7 @@ export function NoteView({ note, fontSize, initialEditing = false, onUpdate, onD
   const isPlayingRef = useRef<boolean>(false)
   const isPausedRef = useRef<boolean>(false)
 
-  const stopSpeech = useCallback((resetOnly = false) => {
+  const stopSpeech = useCallback(() => {
     speechSynthesis.cancel()
     queueRef.current = []
     indexRef.current = 0
@@ -201,7 +201,7 @@ export function NoteView({ note, fontSize, initialEditing = false, onUpdate, onD
     if (!isPlayingRef.current || isPausedRef.current) return
 
     if (indexRef.current >= queueRef.current.length) {
-      stopSpeech(true)
+      stopSpeech()
       return
     }
 
@@ -349,7 +349,7 @@ export function NoteView({ note, fontSize, initialEditing = false, onUpdate, onD
   // Stop playback if we enter editing mode
   useEffect(() => {
     if (editing) {
-      stopSpeech(false)
+      stopSpeech()
       setStartLineIdx(null)
     }
   }, [editing, stopSpeech])
@@ -441,8 +441,8 @@ export function NoteView({ note, fontSize, initialEditing = false, onUpdate, onD
             <button
               onClick={() => setCensorMode(v => !v)}
               className={`flex items-center gap-1.5 px-3 py-1.5 rounded-md text-sm font-medium transition-colors cursor-pointer ${censorMode
-                  ? 'bg-slate-700 text-slate-100'
-                  : 'text-slate-400 hover:bg-slate-800 hover:text-slate-200'
+                ? 'bg-slate-700 text-slate-100'
+                : 'text-slate-400 hover:bg-slate-800 hover:text-slate-200'
                 }`}
               title={censorMode ? 'Show all words' : 'Censor sensitive words'}
             >
@@ -458,8 +458,8 @@ export function NoteView({ note, fontSize, initialEditing = false, onUpdate, onD
             <button
               onClick={() => onUpdate(note.id, { read: !note.read })}
               className={`flex items-center gap-1.5 px-3 py-1.5 rounded-md text-sm font-medium transition-colors cursor-pointer ${note.read
-                  ? 'bg-emerald-900/30 text-emerald-400'
-                  : 'text-slate-400 hover:bg-slate-800 hover:text-slate-200'
+                ? 'bg-emerald-900/30 text-emerald-400'
+                : 'text-slate-400 hover:bg-slate-800 hover:text-slate-200'
                 }`}
               title={note.read ? 'Mark as unread' : 'Mark as read'}
             >
@@ -541,7 +541,7 @@ export function NoteView({ note, fontSize, initialEditing = false, onUpdate, onD
         <div className="fixed bottom-6 right-6 z-50 flex items-center gap-3">
           {isPlaying && (
             <button
-              onClick={() => stopSpeech(false)}
+              onClick={() => stopSpeech()}
               className="w-10 h-10 flex items-center justify-center rounded-full bg-slate-800/95 hover:bg-slate-700 text-slate-300 hover:text-white border border-slate-700/80 shadow-md transition-all duration-300 hover:scale-105 active:scale-95 cursor-pointer"
               title="Stop listening"
               aria-label="Stop"
