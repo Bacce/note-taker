@@ -75,6 +75,86 @@ function censorText(text: string): React.ReactNode[] {
   return parts
 }
 
+/** Splits a string into chunks of at most `size` chars, only breaking between words. */
+function wrapAtWords(text: string, size: number): string[] {
+  const words = text.split(/\s+/)
+  const lines: string[] = []
+  let current = ''
+  for (const word of words) {
+    if (!current) {
+      current = word
+    } else if (current.length + 1 + word.length <= size) {
+      current += ' ' + word
+    } else {
+      lines.push(current)
+      current = word
+    }
+  }
+  if (current) lines.push(current)
+  return lines
+}
+
+function splitText(text: string, size = 180, softMin = 160): string[] {
+  const chunks: string[] = []
+  let segStart = 0
+  let lastSoftBreak = -1 // absolute index of most recent ; or : in the current segment
+
+  for (let i = 0; i < text.length; i++) {
+    const ch = text[i]
+    const segLen = i - segStart + 1
+
+    if (ch === ';' || ch === ':') {
+      if (segLen >= softMin) {
+        // Long enough – split immediately at this delimiter
+        chunks.push(text.slice(segStart, i + 1).trim())
+        while (i + 1 < text.length && text[i + 1] === ' ') i++
+        segStart = i + 1
+        lastSoftBreak = -1
+      } else {
+        // Too short to split yet, but remember this position
+        lastSoftBreak = i
+      }
+    } else if ((ch === '.' || ch === '!' || ch === '?') && segLen >= size) {
+      // Hard split: sentence ending once past the hard limit
+      chunks.push(text.slice(segStart, i + 1).trim())
+      while (i + 1 < text.length && text[i + 1] === ' ') i++
+      segStart = i + 1
+      lastSoftBreak = -1
+    } else if (segLen > size) {
+      if (lastSoftBreak >= segStart) {
+        // Prefer the last seen ; or : over an arbitrary word boundary
+        chunks.push(text.slice(segStart, lastSoftBreak + 1).trim())
+        let j = lastSoftBreak + 1
+        while (j < text.length && text[j] === ' ') j++
+        segStart = j
+        i = segStart - 1 // loop will i++ → resumes at segStart
+        lastSoftBreak = -1
+      } else {
+        // No delimiter seen – fall back to last word boundary
+        const segment = text.slice(segStart, i + 1)
+        const lastSpace = segment.lastIndexOf(' ')
+        if (lastSpace > 0) {
+          chunks.push(segment.slice(0, lastSpace).trim())
+          segStart += lastSpace + 1
+          i = segStart - 1
+        } else {
+          chunks.push(segment.trim())
+          segStart = i + 1
+        }
+        lastSoftBreak = -1
+      }
+    }
+  }
+
+  // Push any remaining text
+  const remaining = text.slice(segStart).trim()
+  if (remaining) {
+    chunks.push(...(remaining.length > size ? wrapAtWords(remaining, size) : [remaining]))
+  }
+
+  return chunks.filter(Boolean)
+}
+
 interface NoteViewProps {
   note: Note
   fontSize: number
@@ -97,6 +177,114 @@ export function NoteView({ note, fontSize, initialEditing = false, onUpdate, onD
   const contentRef = useRef<HTMLTextAreaElement>(null)
   const scrollRef = useRef<HTMLDivElement>(null)
   const saveScrollTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
+
+  // Speech Synthesis state & refs
+  const [isPlaying, setIsPlaying] = useState(false)
+  const [isPaused, setIsPaused] = useState(false)
+  const [startLineIdx, setStartLineIdx] = useState<number | null>(null) // index of paragraph where playback begins
+  const queueRef = useRef<string[]>([])
+  const indexRef = useRef<number>(0)
+  const isPlayingRef = useRef<boolean>(false)
+  const isPausedRef = useRef<boolean>(false)
+
+  const stopSpeech = useCallback((resetOnly = false) => {
+    speechSynthesis.cancel()
+    queueRef.current = []
+    indexRef.current = 0
+    isPlayingRef.current = false
+    isPausedRef.current = false
+    setIsPlaying(false)
+    setIsPaused(false)
+  }, [])
+
+  const speakNext = useCallback(() => {
+    if (!isPlayingRef.current || isPausedRef.current) return
+
+    if (indexRef.current >= queueRef.current.length) {
+      stopSpeech(true)
+      return
+    }
+
+    const currentText = queueRef.current[indexRef.current]
+    const utterance = new SpeechSynthesisUtterance(currentText)
+    utterance.lang = 'en-US'
+    utterance.rate = 1
+    utterance.pitch = 1
+    utterance.volume = 1
+
+    utterance.onend = () => {
+      if (isPlayingRef.current && !isPausedRef.current) {
+        indexRef.current++
+        speakNext()
+      }
+    }
+
+    utterance.onerror = (e) => {
+      console.error('Speech synthesis error', e)
+      if (isPlayingRef.current && !isPausedRef.current) {
+        indexRef.current++
+        speakNext()
+      }
+    }
+
+    speechSynthesis.speak(utterance)
+  }, [stopSpeech])
+
+  const getFirstVisibleLineIndex = useCallback(() => {
+    const el = scrollRef.current
+    if (!el) return 0
+    // Query children inside the read view lines container specifically
+    const children = el.querySelectorAll('[data-line-index]')
+    const containerRect = el.getBoundingClientRect()
+
+    for (let i = 0; i < children.length; i++) {
+      const child = children[i]
+      const rect = child.getBoundingClientRect()
+      // If the bottom of this line is below or at the top of the visible container
+      if (rect.bottom >= containerRect.top) {
+        const idx = parseInt(child.getAttribute('data-line-index') || '0', 10)
+        return idx
+      }
+    }
+    return 0
+  }, [])
+
+  const startSpeech = useCallback(() => {
+    const lines = note.content.split('\n');
+    const startIdx = startLineIdx !== null ? startLineIdx : getFirstVisibleLineIndex();
+    const visibleText = lines.slice(startIdx).join('\n');
+
+    if (!visibleText.trim()) return;
+
+    // Store where playback starts for UI highlight
+    setStartLineIdx(startIdx);
+
+    queueRef.current = splitText(visibleText);
+    indexRef.current = 0;
+    isPlayingRef.current = true;
+    isPausedRef.current = false;
+    setIsPlaying(true);
+    setIsPaused(false);
+
+    speechSynthesis.cancel();
+    speakNext();
+  }, [note.content, getFirstVisibleLineIndex, speakNext, startLineIdx]);
+
+  const toggleSpeech = useCallback(() => {
+    if (!isPlayingRef.current) {
+      startSpeech()
+    } else {
+      if (isPausedRef.current) {
+        isPausedRef.current = false
+        setIsPaused(false)
+        speechSynthesis.resume()
+      } else {
+        isPausedRef.current = true
+        setIsPaused(true)
+        speechSynthesis.pause()
+      }
+    }
+  }, [startSpeech])
 
   // Restore saved scroll position once the scroll container is mounted
   useEffect(() => {
@@ -150,6 +338,21 @@ export function NoteView({ note, fontSize, initialEditing = false, onUpdate, onD
       if (el) localStorage.setItem(scrollKey(note.id), String(el.scrollTop))
     }
   }, [note.id])
+
+  // Cleanup speech on unmount or when note changes
+  useEffect(() => {
+    return () => {
+      speechSynthesis.cancel()
+    }
+  }, [note.id])
+
+  // Stop playback if we enter editing mode
+  useEffect(() => {
+    if (editing) {
+      stopSpeech(false)
+      setStartLineIdx(null)
+    }
+  }, [editing, stopSpeech])
 
   function save() {
     onUpdate(note.id, { title: title.trim() || 'Untitled', content })
@@ -237,11 +440,10 @@ export function NoteView({ note, fontSize, initialEditing = false, onUpdate, onD
             {/* Censor toggle */}
             <button
               onClick={() => setCensorMode(v => !v)}
-              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-md text-sm font-medium transition-colors cursor-pointer ${
-                censorMode
+              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-md text-sm font-medium transition-colors cursor-pointer ${censorMode
                   ? 'bg-slate-700 text-slate-100'
                   : 'text-slate-400 hover:bg-slate-800 hover:text-slate-200'
-              }`}
+                }`}
               title={censorMode ? 'Show all words' : 'Censor sensitive words'}
             >
               <svg className="w-3.5 h-3.5" fill="currentColor" viewBox="0 0 24 24">
@@ -255,11 +457,10 @@ export function NoteView({ note, fontSize, initialEditing = false, onUpdate, onD
             </button>
             <button
               onClick={() => onUpdate(note.id, { read: !note.read })}
-              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-md text-sm font-medium transition-colors cursor-pointer ${
-                note.read
+              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-md text-sm font-medium transition-colors cursor-pointer ${note.read
                   ? 'bg-emerald-900/30 text-emerald-400'
                   : 'text-slate-400 hover:bg-slate-800 hover:text-slate-200'
-              }`}
+                }`}
               title={note.read ? 'Mark as unread' : 'Mark as read'}
             >
               <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -316,14 +517,70 @@ export function NoteView({ note, fontSize, initialEditing = false, onUpdate, onD
               className="text-slate-300 whitespace-pre-wrap leading-relaxed"
               style={{ fontSize }}
             >
-              {note.content
-                ? (censorMode ? censorText(note.content) : note.content)
-                : <span className="text-slate-600 italic">Empty note. Click Edit to start writing.</span>
-              }
+              {note.content ? (
+                note.content.split('\n').map((line, lineIdx) => (
+                  <div
+                    key={lineIdx}
+                    data-line-index={lineIdx}
+                    className={`min-h-[1.5em] ${startLineIdx !== null && lineIdx === startLineIdx ? 'bg-indigo-200/30' : ''} cursor-pointer hover:bg-indigo-100/30`}
+                    onClick={() => setStartLineIdx(lineIdx)}
+                  >
+                    {censorMode ? censorText(line) : line}
+                  </div>
+                ))
+              ) : (
+                <span className="text-slate-600 italic">Empty note. Click Edit to start writing.</span>
+              )}
             </div>
           </div>
         )}
       </div>
+
+      {/* Floating Play-Pause & Stop Controls */}
+      {!editing && note.content && (
+        <div className="fixed bottom-6 right-6 z-50 flex items-center gap-3">
+          {isPlaying && (
+            <button
+              onClick={() => stopSpeech(false)}
+              className="w-10 h-10 flex items-center justify-center rounded-full bg-slate-800/95 hover:bg-slate-700 text-slate-300 hover:text-white border border-slate-700/80 shadow-md transition-all duration-300 hover:scale-105 active:scale-95 cursor-pointer"
+              title="Stop listening"
+              aria-label="Stop"
+            >
+              <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 24 24">
+                <rect x="5" y="5" width="14" height="14" rx="1.5" />
+              </svg>
+            </button>
+          )}
+
+          <button
+            onClick={toggleSpeech}
+            className="relative w-14 h-14 flex items-center justify-center rounded-full bg-gradient-to-r from-indigo-600 via-indigo-500 to-violet-600 text-white shadow-lg shadow-indigo-500/25 hover:shadow-indigo-500/40 hover:scale-105 active:scale-95 transition-all duration-300 cursor-pointer group"
+            title={isPlaying ? (isPaused ? 'Resume listening' : 'Pause listening') : 'Listen to note'}
+            aria-label={isPlaying ? (isPaused ? 'Resume' : 'Pause') : 'Listen'}
+          >
+            {/* Pulsating ring when active & speaking */}
+            {isPlaying && !isPaused && (
+              <span className="absolute -inset-1.5 rounded-full bg-indigo-500/30 animate-ping pointer-events-none" />
+            )}
+
+            {/* Glowing background */}
+            <span className="absolute inset-0 rounded-full bg-gradient-to-r from-indigo-600 via-indigo-500 to-violet-600 group-hover:opacity-90 transition-opacity" />
+
+            {/* Icon (Play / Pause) */}
+            <span className="relative z-10">
+              {isPlaying && !isPaused ? (
+                <svg className="w-6 h-6" fill="currentColor" viewBox="0 0 24 24">
+                  <path fillRule="evenodd" d="M6.75 5.25a.75.75 0 0 1 .75-.75H9a.75.75 0 0 1 .75.75v13.5a.75.75 0 0 1-.75.75H7.5a.75.75 0 0 1-.75-.75V5.25Zm7.5 0A.75.75 0 0 1 15 4.5h1.5a.75.75 0 0 1 .75.75v13.5a.75.75 0 0 1-.75.75H15a.75.75 0 0 1-.75-.75V5.25Z" clipRule="evenodd" />
+                </svg>
+              ) : (
+                <svg className="w-6 h-6 ml-0.5" fill="currentColor" viewBox="0 0 24 24">
+                  <path fillRule="evenodd" d="M4.5 5.653c0-1.427 1.529-2.33 2.779-1.643l11.54 6.347c1.295.712 1.295 2.573 0 3.286L7.28 19.99c-1.25.687-2.779-.217-2.779-1.643V5.653Z" clipRule="evenodd" />
+                </svg>
+              )}
+            </span>
+          </button>
+        </div>
+      )}
     </div>
   )
 }
