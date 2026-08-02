@@ -17,6 +17,44 @@ function scrollKey(id: string) {
   return `note-scroll-${id}`;
 }
 
+export interface SentenceInfo {
+  index: number;
+  text: string;
+  rawText: string;
+}
+
+export function parseContentToLinesAndSentences(content: string) {
+  const lines = content.split("\n");
+  let globalIndex = 0;
+
+  const parsedLines = lines.map((line, lineIndex) => {
+    if (!line.trim()) {
+      return { lineIndex, sentences: [] as SentenceInfo[] };
+    }
+
+    const matches = line.match(/[^.!?]+[.!?]+(?=\s|$)|[^.!?]+$/g) || [line];
+
+    const sentences = matches
+      .filter((s) => s.trim().length > 0)
+      .map((s) => {
+        const item: SentenceInfo = {
+          index: globalIndex,
+          text: s.trim(),
+          rawText: s,
+        };
+        globalIndex++;
+        return item;
+      });
+
+    return { lineIndex, sentences };
+  });
+
+  const allSentences: SentenceInfo[] = [];
+  parsedLines.forEach((l) => l.sentences.forEach((s) => allSentences.push(s)));
+
+  return { parsedLines, allSentences };
+}
+
 export function NoteView({
   note,
   fontSize,
@@ -29,9 +67,132 @@ export function NoteView({
   const [title, setTitle] = useState(note.title);
   const [content, setContent] = useState(note.content);
   const [readProgress, setReadProgress] = useState(0);
+  const [isPlaying, setIsPlaying] = useState(false);
+  const [activeSentenceIndex, setActiveSentenceIndex] = useState<number | null>(
+    null,
+  );
+
   const contentRef = useRef<HTMLTextAreaElement>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
   const saveScrollTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const sentenceIndexRef = useRef<number>(0);
+  const allSentencesRef = useRef<SentenceInfo[]>([]);
+  const isPlayingRef = useRef<boolean>(false);
+
+  const { parsedLines, allSentences } = parseContentToLinesAndSentences(content);
+
+  useEffect(() => {
+    allSentencesRef.current = allSentences;
+  }, [allSentences]);
+
+  const stopSpeech = useCallback(() => {
+    isPlayingRef.current = false;
+    if (typeof window !== "undefined" && "speechSynthesis" in window) {
+      window.speechSynthesis.cancel();
+    }
+    setIsPlaying(false);
+  }, []);
+
+  const speakSentence = useCallback(
+    (index: number, sentencesList?: SentenceInfo[]) => {
+      const list = sentencesList || allSentencesRef.current;
+      if (index < 0 || index >= list.length) {
+        isPlayingRef.current = false;
+        setIsPlaying(false);
+        return;
+      }
+
+      if (typeof window === "undefined" || !("speechSynthesis" in window)) {
+        isPlayingRef.current = false;
+        setIsPlaying(false);
+        return;
+      }
+
+      window.speechSynthesis.cancel();
+
+      const currentSentence = list[index];
+      sentenceIndexRef.current = index;
+      setActiveSentenceIndex(index);
+
+      requestAnimationFrame(() => {
+        const el = document.querySelector(`[data-sentence-index="${index}"]`);
+        el?.scrollIntoView({ block: "nearest", behavior: "smooth" });
+      });
+
+      const utterance = new SpeechSynthesisUtterance(currentSentence.text);
+
+      utterance.onend = () => {
+        if (!isPlayingRef.current) return;
+        const nextIdx = sentenceIndexRef.current + 1;
+        if (nextIdx < allSentencesRef.current.length) {
+          speakSentence(nextIdx, allSentencesRef.current);
+        } else {
+          stopSpeech();
+        }
+      };
+
+      utterance.onerror = (e) => {
+        if (!isPlayingRef.current) return;
+        console.error("Speech synthesis error", e);
+        const nextIdx = sentenceIndexRef.current + 1;
+        if (nextIdx < allSentencesRef.current.length) {
+          speakSentence(nextIdx, allSentencesRef.current);
+        } else {
+          stopSpeech();
+        }
+      };
+
+      isPlayingRef.current = true;
+      setIsPlaying(true);
+      window.speechSynthesis.speak(utterance);
+    },
+    [stopSpeech],
+  );
+
+  const togglePlay = useCallback(() => {
+    if (isPlaying) {
+      stopSpeech();
+    } else {
+      const list = allSentencesRef.current;
+      if (list.length === 0) return;
+
+      const startIndex =
+        activeSentenceIndex !== null &&
+        activeSentenceIndex >= 0 &&
+        activeSentenceIndex < list.length
+          ? activeSentenceIndex
+          : 0;
+
+      speakSentence(startIndex, list);
+    }
+  }, [isPlaying, activeSentenceIndex, stopSpeech, speakSentence]);
+
+  const handleSentenceClick = useCallback(
+    (index: number) => {
+      setActiveSentenceIndex(index);
+      if (isPlayingRef.current) {
+        stopSpeech();
+      }
+    },
+    [stopSpeech],
+  );
+
+  // Clean up speech on note change or unmount
+  useEffect(() => {
+    setActiveSentenceIndex(null);
+    return () => {
+      stopSpeech();
+    };
+  }, [note.id, stopSpeech]);
+
+  // Stop playback when entering edit mode
+  useEffect(() => {
+    if (editing) {
+      stopSpeech();
+      setActiveSentenceIndex(null);
+    }
+  }, [editing, stopSpeech]);
 
   // Restore saved scroll position once the scroll container is mounted
   useEffect(() => {
@@ -200,6 +361,31 @@ export function NoteView({
               <span>{readProgress}%</span>
             </div>
             <button
+              onClick={togglePlay}
+              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-md text-sm font-medium transition-colors cursor-pointer ${
+                isPlaying
+                  ? "bg-amber-500/20 text-amber-300 hover:bg-amber-500/30"
+                  : "text-slate-300 hover:bg-slate-800 hover:text-white"
+              }`}
+              title={isPlaying ? "Stop" : "Play"}
+            >
+              {isPlaying ? (
+                <>
+                  <svg className="w-3.5 h-3.5 fill-current" viewBox="0 0 24 24">
+                    <rect x="6" y="6" width="12" height="12" rx="1.5" />
+                  </svg>
+                  Stop
+                </>
+              ) : (
+                <>
+                  <svg className="w-3.5 h-3.5 fill-current" viewBox="0 0 24 24">
+                    <path d="M8 5v14l11-7z" />
+                  </svg>
+                  Play
+                </>
+              )}
+            </button>
+            <button
               onClick={() => onUpdate(note.id, { read: !note.read })}
               className={`flex items-center gap-1.5 px-3 py-1.5 rounded-md text-sm font-medium transition-colors cursor-pointer ${
                 note.read
@@ -273,17 +459,38 @@ export function NoteView({
               {note.title || "Untitled"}
             </h1>
             <div
-              className="text-slate-300 whitespace-pre-wrap leading-relaxed"
+              className="text-slate-300 leading-relaxed"
               style={{ fontSize }}
             >
               {note.content ? (
-                note.content.split("\n").map((line, lineIdx) => (
+                parsedLines.map((lineInfo) => (
                   <div
-                    key={lineIdx}
-                    data-line-index={lineIdx}
-                    className="min-h-[1.5em]"
+                    key={lineInfo.lineIndex}
+                    data-line-index={lineInfo.lineIndex}
+                    className="min-h-[1.5em] my-0.5"
                   >
-                    {line}
+                    {lineInfo.sentences.length === 0 ? (
+                      <br />
+                    ) : (
+                      lineInfo.sentences.map((sentence) => {
+                        const isActive =
+                          activeSentenceIndex === sentence.index;
+                        return (
+                          <span
+                            key={sentence.index}
+                            data-sentence-index={sentence.index}
+                            onClick={() => handleSentenceClick(sentence.index)}
+                            className={`cursor-pointer transition-colors duration-150 rounded px-1 py-0.5 mr-1 inline-block ${
+                              isActive
+                                ? "bg-indigo-600/40 text-indigo-100 font-medium ring-1 ring-indigo-400/50"
+                                : "hover:bg-slate-800/80 hover:text-slate-100"
+                            }`}
+                          >
+                            {sentence.rawText}
+                          </span>
+                        );
+                      })
+                    )}
                   </div>
                 ))
               ) : (
