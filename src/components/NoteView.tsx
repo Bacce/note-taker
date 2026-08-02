@@ -89,15 +89,16 @@ export function NoteView({
 
   // Wake Lock helpers – keep screen on during TTS
   const requestWakeLock = useCallback(async () => {
-    if ("wakeLock" in navigator) {
-      try {
-        wakeLockRef.current = await navigator.wakeLock.request("screen");
-        wakeLockRef.current.addEventListener("release", () => {
-          wakeLockRef.current = null;
-        });
-      } catch (e) {
-        console.warn("Wake Lock request failed:", e);
-      }
+    if (!("wakeLock" in navigator)) return;
+    // Already holding an active lock – no need to request again
+    if (wakeLockRef.current) return;
+    try {
+      wakeLockRef.current = await navigator.wakeLock.request("screen");
+      wakeLockRef.current.addEventListener("release", () => {
+        wakeLockRef.current = null;
+      });
+    } catch (e) {
+      console.warn("Wake Lock request failed:", e);
     }
   }, []);
 
