@@ -79,6 +79,7 @@ export function NoteView({
   const sentenceIndexRef = useRef<number>(0);
   const allSentencesRef = useRef<SentenceInfo[]>([]);
   const isPlayingRef = useRef<boolean>(false);
+  const wakeLockRef = useRef<WakeLockSentinel | null>(null);
 
   const { parsedLines, allSentences } = parseContentToLinesAndSentences(content);
 
@@ -86,13 +87,51 @@ export function NoteView({
     allSentencesRef.current = allSentences;
   }, [allSentences]);
 
+  // Wake Lock helpers – keep screen on during TTS
+  const requestWakeLock = useCallback(async () => {
+    if ("wakeLock" in navigator) {
+      try {
+        wakeLockRef.current = await navigator.wakeLock.request("screen");
+        wakeLockRef.current.addEventListener("release", () => {
+          wakeLockRef.current = null;
+        });
+      } catch (e) {
+        console.warn("Wake Lock request failed:", e);
+      }
+    }
+  }, []);
+
+  const releaseWakeLock = useCallback(() => {
+    if (wakeLockRef.current) {
+      wakeLockRef.current.release();
+      wakeLockRef.current = null;
+    }
+  }, []);
+
+  // Re-acquire wake lock when the page becomes visible again
+  useEffect(() => {
+    const onVisibilityChange = () => {
+      if (
+        document.visibilityState === "visible" &&
+        isPlayingRef.current &&
+        !wakeLockRef.current
+      ) {
+        requestWakeLock();
+      }
+    };
+    document.addEventListener("visibilitychange", onVisibilityChange);
+    return () =>
+      document.removeEventListener("visibilitychange", onVisibilityChange);
+  }, [requestWakeLock]);
+
   const stopSpeech = useCallback(() => {
     isPlayingRef.current = false;
     if (typeof window !== "undefined" && "speechSynthesis" in window) {
       window.speechSynthesis.cancel();
     }
     setIsPlaying(false);
-  }, []);
+    releaseWakeLock();
+  }, [releaseWakeLock]);
 
   const speakSentence = useCallback(
     (index: number, sentencesList?: SentenceInfo[]) => {
@@ -145,6 +184,7 @@ export function NoteView({
 
       isPlayingRef.current = true;
       setIsPlaying(true);
+      requestWakeLock();
       window.speechSynthesis.speak(utterance);
     },
     [stopSpeech],
