@@ -139,12 +139,14 @@ export function NoteView({
       if (index < 0 || index >= list.length) {
         isPlayingRef.current = false;
         setIsPlaying(false);
+        releaseWakeLock();
         return;
       }
 
       if (typeof window === "undefined" || !("speechSynthesis" in window)) {
         isPlayingRef.current = false;
         setIsPlaying(false);
+        releaseWakeLock();
         return;
       }
 
@@ -187,7 +189,7 @@ export function NoteView({
       requestWakeLock();
       window.speechSynthesis.speak(utterance);
     },
-    [stopSpeech],
+    [stopSpeech, releaseWakeLock, requestWakeLock],
   );
 
   const togglePlay = useCallback(() => {
